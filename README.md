@@ -55,6 +55,32 @@ We can also configure the response code for throttled requests using:
 To disable throttling set:
 
     SERVICE_COMPOJURE_THROTTLE_LAX_IPS="subnet for disabling throttling" 
+    
+These settings are applied globally across all caches (see below).
+    
+## Even More Configurability
+
+For full generality, you can create your own throttler-cache with custom TTL
+and token settings, and pass it as a third argument to `throttle`. This allows 
+you to have different TTL and token settings for different requests.
+
+For example:
+
+```
+(defroutes main-routes
+
+  ;; One request every 500ms, by :user
+  (throttler/throttle
+    :user
+    (throttler/make-throttle-cache {:ttl 500 :tokens 1})
+    (POST "/data" req "OK"))
+
+  ;; Three requests every 2000ms, by IP
+  (throttler/throttle
+    throttler/by-ip
+    (throttler/make-throttle-cache {:ttl 2000 :tokens 3})
+    (POST "/data" req "OK")))
+```
 
 # Building #
 
