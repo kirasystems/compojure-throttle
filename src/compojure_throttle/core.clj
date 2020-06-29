@@ -37,6 +37,11 @@
    :ttl-setting    ttl
    :tokens-setting tokens})
 
+(defn reset-throttle-cache!
+  "Testing helper that resets given throttling cache, to allow for tests to run reliably."
+  [{:keys [cache ttl-setting]}]
+  (reset! cache (cache/ttl-cache-factory {} :ttl ttl-setting)))
+
 (def ^:private requests
   "Default cache for throttling requests globally."
   (make-throttle-cache {:ttl    (prop :service-compojure-throttle-ttl)
@@ -46,7 +51,7 @@
   "Testing helper that resets the content of the global cache - should allow
    tests to run from a known base"
   []
-  (reset! (:cache requests) (cache/ttl-cache-factory {} :ttl (:ttl-setting requests))))
+  (reset-throttle-cache! requests))
 
 (defn- update-cache
   [cache id tokens]

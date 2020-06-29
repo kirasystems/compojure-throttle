@@ -48,4 +48,16 @@
                     (handler req) => (contains {:status 429})
                     (handler req) => (contains {:status 429})
                     (handler req) => (contains {:status 429})
-                    (handler (assoc req :foobar :other)) => (contains {:status 200}))))
+                    (handler (assoc req :foobar :other)) => (contains {:status 200}))
+              (fact "Reset local throttling cache resets the local cache"
+                    (reset-throttle-cache! local-throttler)
+                    ; Global throttler should not affect local throttling
+                    (dotimes [_ 10] (ok-or-throttle req))
+                    (handler req) => (contains {:status 200})
+                    (handler req) => (contains {:status 429})
+                    (handler req) => (contains {:status 429})
+
+                    (reset-throttle-cache! local-throttler)
+                    (handler req) => (contains {:status 200})
+                    (handler req) => (contains {:status 429})
+                    (handler req) => (contains {:status 429}))))
