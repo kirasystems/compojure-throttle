@@ -33,14 +33,14 @@
    This maintains all of the state for figuring out which request to throttle.
    (Yeah, it's just a TTL cache, but don't rely on that.)"
   [{:keys [ttl tokens]}]
-  {:cache          (atom (cache/ttl-cache-factory {} :ttl ttl))
-   :ttl-setting    ttl
-   :tokens-setting tokens})
+  {:cache  (atom (cache/ttl-cache-factory {} :ttl ttl))
+   :ttl    ttl
+   :tokens tokens})
 
 (defn reset-throttle-cache!
   "Testing helper that resets given throttling cache, to allow for tests to run reliably."
-  [{:keys [cache ttl-setting]}]
-  (reset! cache (cache/ttl-cache-factory {} :ttl ttl-setting)))
+  [{:keys [cache ttl]}]
+  (reset! cache (cache/ttl-cache-factory {} :ttl ttl)))
 
 (def ^:private requests
   "Default cache for throttling requests globally."
@@ -63,14 +63,14 @@
    :datetime (local-time/local-now)})
 
 (defn- throttle?
-  [{:keys [cache ttl-setting tokens-setting]} id]
+  [{:keys [cache ttl tokens]} id]
   (when-not (cache/has? @cache id)
-    (update-cache cache id (record tokens-setting)))
+    (update-cache cache id (record tokens)))
   (let [entry     (cache/lookup @cache id)
         spares    (int (/ (core-time/in-millis (core-time/interval
                                                  (:datetime entry)
                                                  (local-time/local-now)))
-                          (/ ttl-setting tokens-setting)))
+                          (/ ttl tokens)))
         remaining (+ (:tokens entry) spares)]
     (update-cache cache id (record (dec remaining)))
     (not (pos? remaining))))
