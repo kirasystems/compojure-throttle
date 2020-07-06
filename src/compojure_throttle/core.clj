@@ -109,4 +109,4 @@
   ([finder handler]
    (throttle finder requests handler))
   ([handler]
-   (throttle by-ip requests handler)))
+   (throttle by-ip handler)))
