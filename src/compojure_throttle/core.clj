@@ -25,22 +25,37 @@
   (Integer. (or (env key)
                 (defaults key))))
 
+(defn make-throttle-cache
+  "Initialize a throttling cache with a given TTL and tokens.
+
+   Pass a map containing keys :ttl and :tokens.
+
+   This maintains all of the state for figuring out which request to throttle.
+   (Yeah, it's just a TTL cache, but don't rely on that.)"
+  [{:keys [ttl tokens]}]
+  {:cache  (atom (cache/ttl-cache-factory {} :ttl ttl))
+   :ttl    ttl
+   :tokens tokens})
+
+(defn reset-throttle-cache!
+  "Testing helper that resets given throttling cache, to allow for tests to run reliably."
+  [{:keys [cache ttl]}]
+  (reset! cache (cache/ttl-cache-factory {} :ttl ttl)))
+
 (def ^:private requests
-  (atom (cache/ttl-cache-factory {} :ttl (prop :service-compojure-throttle-ttl))))
+  "Default cache for throttling requests globally."
+  (make-throttle-cache {:ttl    (prop :service-compojure-throttle-ttl)
+                        :tokens (prop :service-compojure-throttle-tokens)}))
 
 (defn reset-cache
-  "Testing helper that resets the content of the cache - should allow tests to run from a known base"
+  "Testing helper that resets the content of the global cache - should allow
+   tests to run from a known base"
   []
-  (reset! requests (cache/ttl-cache-factory {} :ttl (prop :service-compojure-throttle-ttl))))
+  (reset-throttle-cache! requests))
 
 (defn- update-cache
-  [id tokens]
-  (swap! requests cache/miss id tokens))
-
-(defn token-period
-  []
-  (/ (prop :service-compojure-throttle-ttl)
-     (prop :service-compojure-throttle-tokens)))
+  [cache id tokens]
+  (swap! cache cache/miss id tokens))
 
 (defn- record
   [tokens]
@@ -48,19 +63,22 @@
    :datetime (local-time/local-now)})
 
 (defn- throttle?
-  [id]
-  (when-not (cache/has? @requests id)
-    (update-cache id (record (prop :service-compojure-throttle-tokens))))
-  (let [entry     (cache/lookup @requests id)
+  [{:keys [cache ttl tokens]} id]
+  (when-not (cache/has? @cache id)
+    (update-cache cache id (record tokens)))
+  (let [entry     (cache/lookup @cache id)
         spares    (int (/ (core-time/in-millis (core-time/interval
                                                  (:datetime entry)
                                                  (local-time/local-now)))
-                          (token-period)))
+                          (/ ttl tokens)))
         remaining (+ (:tokens entry) spares)]
-    (update-cache id (record (dec remaining)))
+    (update-cache cache id (record (dec remaining)))
     (not (pos? remaining))))
 
-(defn- by-ip
+(defn by-ip
+  "A finder function that gets the IP from the request.
+
+   This is used by default for `throttle` when no function is provided."
   [req]
   (:remote-addr req))
 
@@ -72,17 +90,23 @@
    :service-compojure-throttle-enabled is false, throttling will still happen 
    to any IP not covered by :service-compojure-throttle-lax-ips.
   
-  Optionally takes a second argument which is a function used to lookup the 'token'
-  that determines whether or not the request is unique. For example a function that
-  returns a user token to limit by user id rather than ip. This function should accept
-  the request as its single argument"
-  ([finder handler]
+   Optionally takes a second argument which is a function used to lookup the 'token'
+   that determines whether or not the request is unique. For example a function that
+   returns a user token to limit by user id rather than ip. This function should accept
+   the request as its single argument.
+
+   For full generality, this also takes an optional third argument, an instance
+   of 'throttle-cache'. Create one using (make-throttle-cache ttl tokens) to
+   have a separate throttler from the global one with custom settings."
+  ([finder throttle-cache handler]
    (fn [req]
      (if (and (or (nil? (ip-lax-subnet))
                   (not (in-lax-subnet? (:remote-addr req))))
-              (throttle? (finder req)))
+              (throttle? throttle-cache (finder req)))
        {:status (prop :service-compojure-throttle-response-code)
         :body   "You have sent too many requests. Please wait before retrying."}
        (handler req))))
+  ([finder handler]
+   (throttle finder requests handler))
   ([handler]
    (throttle by-ip handler)))
