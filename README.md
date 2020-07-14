@@ -7,7 +7,7 @@ can access a resource. Going over this rate will return an error response.
 
 Internal artifactory
 
-    [compojure-throttle "0.1.8"]
+    [compojure-throttle "0.1.9"]
 
 Then use with 
 
